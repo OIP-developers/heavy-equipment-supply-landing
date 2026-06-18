@@ -1,0 +1,265 @@
+name: CI/CD Pipeline for equipment.worldwidebizconsultantsinc.com (Production)
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed # Trigger only when a pull request is closed (merged)
+
+env:
+  ORG_NAME: ${{ github.repository }}
+  BASE_URL: equipment.worldwidebizconsultantsinc.com
+  APP_PORT: 4170
+# ======================================================
+# STAGE 1: BUILD
+# ======================================================
+jobs:
+  build:
+    name: Build
+    # Only run this job if the pull request was merged 
+    if: github.event.pull_request.merged == true
+    runs-on: [self-hosted, prod]
+
+    outputs:
+      image-tag: ${{ steps.set-tag.outputs.image-tag }}
+
+    steps:
+
+      # --------------------------
+      # Checkout Repository
+      # --------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------
+      # Generate Production Image Tag
+      # --------------------------------------------------
+      - name: Set image tag (prod)
+        id: set-tag
+        run: |
+          set -euo pipefail
+
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
+          if [ "${GITHUB_REF##*/}" = "main" ]; then
+            IMAGE_TAG="prod-${SHORT_SHA}"
+          else
+            echo "ERROR: Production image can only be built from main branch"
+            exit 1
+          fi
+
+          echo "image-tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+          echo "======================================="
+          echo "Production Image Tag: $IMAGE_TAG"
+          echo "======================================="
+
+      # --------------------------
+      # Verify Docker
+      # --------------------------
+      - name: Verify Docker
+        run: |
+          set -euo pipefail
+          docker info >/dev/null 2>&1 || {
+            echo "ERROR: Docker daemon not running"
+            exit 1
+          }
+
+          echo "Docker is healthy"
+
+      # --------------------------
+      # Build Docker Image
+      # --------------------------
+      - name: Build Docker image
+        run: |
+          set -euo pipefail
+
+          IMAGE_TAG="${{ steps.set-tag.outputs.image-tag }}"
+          FULL_IMAGE_NAME="${ORG_NAME}:${IMAGE_TAG}"
+
+          echo "======================================="
+          echo "Building Docker Image"
+          echo "Image: $FULL_IMAGE_NAME"
+          echo "======================================="
+
+          docker build \
+            --progress=plain \
+            -t "$FULL_IMAGE_NAME" \
+            -f Dockerfile .
+
+          echo "Docker image built successfully"
+
+
+# ======================================================
+# STAGE 2: DEPLOY
+# ======================================================
+  deploy:
+    name: Deploy to Production
+    runs-on: [self-hosted, prod]
+    needs: build
+
+    steps:
+      # --------------------------
+      # Deploy Container
+      # --------------------------
+      - name: Deploy Docker image (PROD)
+        run: |
+          set -euo pipefail
+
+          IMAGE_TAG="${{ needs.build.outputs.image-tag }}"
+          FULL_IMAGE_NAME="${ORG_NAME}:${IMAGE_TAG}"
+
+          REPO_NAME=$(basename "$ORG_NAME")
+          CONTAINER_NAME="${REPO_NAME}-prod"
+
+          echo "======================================="
+          echo "PRODUCTION DEPLOYMENT STARTED"
+          echo "Image     : $FULL_IMAGE_NAME"
+          echo "Container : $CONTAINER_NAME"
+          echo "Port      : $APP_PORT"
+          echo "======================================="
+
+          # --------------------------
+          # Verify Docker Image Exists
+          # --------------------------
+          echo "Checking Docker image..."
+
+          docker image inspect $FULL_IMAGE_NAME >/dev/null 2>&1 || {
+            echo "ERROR: Docker image not found"
+            exit 1
+          }
+
+          echo "Docker image verified"
+
+          echo "======================================="
+          echo "Starting container cleanup phase"
+          echo "Container: $CONTAINER_NAME"
+          echo "======================================="
+          echo "Checking existing container..."
+          
+          # --------------------------
+          # Check running container
+          # --------------------------
+          EXISTING_RUNNING=$(docker ps -q -f "name=^${CONTAINER_NAME}$")
+
+          # --------------------------
+          # Check stopped container
+          # --------------------------
+          EXISTING_STOPPED=$(docker ps -aq -f "name=^${CONTAINER_NAME}$")
+
+          if [ -n "$EXISTING_RUNNING" ]; then
+            echo "Stopping running container..."
+            docker stop "$CONTAINER_NAME" || {
+              echo "ERROR: Failed to stop container"
+              exit 1
+            }
+
+            echo "Removing container..."
+            docker rm "$CONTAINER_NAME" || {
+              echo "ERROR: Failed to remove container"
+              exit 1
+            }
+
+          elif [ -n "$EXISTING_STOPPED" ]; then
+            echo "Removing stopped container..."
+            docker rm "$CONTAINER_NAME" || {
+              echo "ERROR: Failed to remove container"
+              exit 1
+            }
+
+          else
+            echo "No existing container found"
+          fi
+
+          echo "Container cleanup completed"
+
+          # --------------------------
+          # Start new container
+          # --------------------------
+          echo "Starting new container..."
+
+          docker run -d \
+            --name "$CONTAINER_NAME" \
+            -p "$APP_PORT:4173" \
+            --restart unless-stopped \
+            "$FULL_IMAGE_NAME" || {
+              echo "ERROR: Failed to start container"
+              exit 1
+            }
+
+          echo "Container started. Verifying..."
+
+          sleep 3
+
+          # --------------------------
+          # Verify container is running
+          # --------------------------
+          if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+            echo "ERROR: Container is not running (crash detected)"
+
+            echo "===== CONTAINER LOGS ====="
+            docker logs "$CONTAINER_NAME" || true
+
+            echo "===== DOCKER PS ====="
+            docker ps -a || true
+
+            exit 1
+          fi
+
+          echo "======================================="
+          echo "DEPLOYMENT SUCCESSFUL"
+          echo "======================================="
+
+      # --------------------------
+      # Health Check (Production Grade)
+      # --------------------------
+      - name: Health Check
+        run: |
+          set -euo pipefail
+
+          REPO_NAME=$(basename "$ORG_NAME")
+          CONTAINER_NAME="${REPO_NAME}-prod"
+
+          echo "======================================="
+          echo "Starting Health Check"
+          echo "======================================="
+
+          echo "Container : $CONTAINER_NAME"
+          echo "Port      : $APP_PORT"
+
+          TIMEOUT=30
+          INTERVAL=3
+          END=$((SECONDS + TIMEOUT))
+
+          while [ $SECONDS -lt $END ]; do
+            if curl -fs "http://localhost:${APP_PORT}/health" >/dev/null; then
+              echo "✅ Health check passed"
+              exit 0
+            fi
+
+            echo "⏳ Waiting for service... retrying in ${INTERVAL}s"
+            sleep $INTERVAL
+          done
+
+          echo "======================================="
+          echo "❌ HEALTH CHECK FAILED (TIMEOUT)"
+          echo "======================================="
+
+          echo "===== Docker Logs ====="
+          docker logs "$CONTAINER_NAME" || true
+
+          echo "===== Running Containers ====="
+          docker ps -a || true
+
+          exit 1
+
+      # --------------------------
+      # Success Message
+      # --------------------------
+      - name: Success
+        run: |
+          echo "======================================="
+          echo "✅ Deployment Successful"
+          echo "URL: https://${BASE_URL}"
+          echo "======================================="
