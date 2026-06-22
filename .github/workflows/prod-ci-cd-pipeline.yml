@@ -4,9 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    types:
-      - closed # Trigger only when a pull request is closed (merged)
-
 env:
   ORG_NAME: ${{ github.repository }}
   BASE_URL: equipment.worldwidebizconsultantsinc.com
@@ -17,8 +14,6 @@ env:
 jobs:
   build:
     name: Build
-    # Only run this job if the pull request was merged 
-    if: github.event.pull_request.merged == true
     runs-on: [self-hosted, prod]
 
     outputs:
