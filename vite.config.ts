@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true,
       port: env.DEV_PORT ? parseInt(env.DEV_PORT) : undefined,
+      proxy: {
+        '/api': 'http://localhost:3001',
+      },
     },
   }
 })

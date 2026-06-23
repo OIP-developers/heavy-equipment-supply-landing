@@ -45,25 +45,26 @@ RUN npm run build
  
 ########## Stage 2: Runtime ##########
 FROM node:20-alpine
- 
+
 WORKDIR /app
- 
-# Install minimal static file server
-RUN npm install -g serve@14
- 
+
 # Create non-root user
 RUN addgroup -g 1001 -S appgroup && \
     adduser -S appuser -u 1001 -G appgroup
- 
-# Copy built files only
+
+# Install production dependencies (express + nodemailer only)
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Copy Express server and built frontend
+COPY server.js ./
 COPY --from=builder /app/dist ./dist
- 
+
 # Fix permissions
 RUN chown -R appuser:appgroup /app
- 
+
 USER appuser
- 
+
 EXPOSE 4173
- 
-# Serve SPA (single-page app support)
-CMD ["serve", "-s", "dist", "-l", "4173"]
+
+CMD ["node", "server.js"]
