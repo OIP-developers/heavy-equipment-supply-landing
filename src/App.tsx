@@ -1,8 +1,94 @@
+import { useState } from 'react'
 import '../page-3.css'
 
+const FUND_OPTIONS = [
+  'RSP / RRSP (Canada)',
+  '401K (USA)',
+  'Super Nation (Australia)',
+  'Super Kiwi (New Zealand)',
+  'SIP / Self Income Plan (UK)',
+  'TFSA (Canada)',
+  'LIDA / Pension Plan',
+  'Severance Package',
+  'Cash / Personal Savings',
+]
+
+async function submitForm(payload: Record<string, string>) {
+  const res = await fetch('/api/contact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return res.json()
+}
+
 function App() {
+  // Toast
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+
+  function showToast(message: string, type: 'success' | 'error') {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 4500)
+  }
+
+  // Hero form state
+  const [hero, setHero] = useState({ fullName: '', email: '', phone: '', fundSource: '', amount: '' })
+  const [heroLoading, setHeroLoading] = useState(false)
+  const [heroError, setHeroError] = useState('')
+
+  // Bottom form state
+  const [invest, setInvest] = useState({ firstName: '', lastName: '', email: '', phone: '', fundSource: '', amount: '', notes: '' })
+  const [investLoading, setInvestLoading] = useState(false)
+  const [investError, setInvestError] = useState('')
+
+  async function handleHeroSubmit(e: { preventDefault(): void }) {
+    e.preventDefault()
+    setHeroLoading(true)
+    setHeroError('')
+    try {
+      const data = await submitForm(hero)
+      if (data.success) {
+        setHero({ fullName: '', email: '', phone: '', fundSource: '', amount: '' })
+        showToast('Thank you! We\'ll be in touch within 24 hours.', 'success')
+      } else {
+        setHeroError(data.message || 'Something went wrong. Please try again.')
+      }
+    } catch {
+      setHeroError('Network error. Please try again.')
+    } finally {
+      setHeroLoading(false)
+    }
+  }
+
+  async function handleInvestSubmit(e: { preventDefault(): void }) {
+    e.preventDefault()
+    setInvestLoading(true)
+    setInvestError('')
+    try {
+      const data = await submitForm(invest)
+      if (data.success) {
+        setInvest({ firstName: '', lastName: '', email: '', phone: '', fundSource: '', amount: '', notes: '' })
+        showToast('Thank you! An investment specialist will contact you within 24 hours.', 'success')
+      } else {
+        setInvestError(data.message || 'Something went wrong. Please try again.')
+      }
+    } catch {
+      setInvestError('Network error. Please try again.')
+    } finally {
+      setInvestLoading(false)
+    }
+  }
+
   return (
     <>
+      {/* TOAST */}
+      {toast && (
+        <div className={`toast toast-${toast.type}`}>
+          <i className={`fa-solid ${toast.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}`}></i>
+          {toast.message}
+        </div>
+      )}
+
       {/* NAVBAR */}
       <nav className="navbar">
         <div className="container">
@@ -45,24 +131,57 @@ function App() {
               <div className="hero-form-box">
                 <h3>Request <span className="gold-text">Share Info</span></h3>
                 <p className="form-tagline">Express your interest — we respond within 24 hours</p>
-                <input type="text" className="fake-input" placeholder="Full Name" />
-                <input type="email" className="fake-input" placeholder="Email Address" />
-                <input type="tel" className="fake-input" placeholder="Phone / WhatsApp Number" />
-                <select className="fake-input" defaultValue="">
-                  <option value="" disabled>Select Your Fund Source</option>
-                  <option>RSP / RRSP (Canada)</option>
-                  <option>401K (USA)</option>
-                  <option>Super Nation (Australia)</option>
-                  <option>Super Kiwi (New Zealand)</option>
-                  <option>SIP / Self Income Plan (UK)</option>
-                  <option>TFSA (Canada)</option>
-                  <option>LIDA / Pension Plan</option>
-                  <option>Severance Package</option>
-                  <option>Cash / Personal Savings</option>
-                </select>
-                <input type="text" className="fake-input" placeholder="Investment Amount (USD)" />
-                <button className="btn-gold">Send My Interest &nbsp;<i className="fa-solid fa-arrow-right"></i></button>
-                <p className="form-note"><i className="fa-solid fa-lock"></i> 100% confidential. No spam, ever.</p>
+
+                <form onSubmit={handleHeroSubmit}>
+                    <input
+                      type="text"
+                      className="fake-input"
+                      placeholder="Full Name"
+                      value={hero.fullName}
+                      onChange={e => setHero(p => ({ ...p, fullName: e.target.value }))}
+                      required
+                    />
+                    <input
+                      type="email"
+                      className="fake-input"
+                      placeholder="Email Address"
+                      value={hero.email}
+                      onChange={e => setHero(p => ({ ...p, email: e.target.value }))}
+                      required
+                    />
+                    <input
+                      type="tel"
+                      className="fake-input"
+                      placeholder="Phone / WhatsApp Number"
+                      value={hero.phone}
+                      onChange={e => setHero(p => ({ ...p, phone: e.target.value }))}
+                      required
+                    />
+                    <select
+                      className="fake-input"
+                      title="Fund Source"
+                      value={hero.fundSource}
+                      onChange={e => setHero(p => ({ ...p, fundSource: e.target.value }))}
+                    >
+                      <option value="" disabled>Select Your Fund Source</option>
+                      {FUND_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                    <input
+                      type="text"
+                      className="fake-input"
+                      placeholder="Investment Amount (USD)"
+                      value={hero.amount}
+                      onChange={e => setHero(p => ({ ...p, amount: e.target.value }))}
+                    />
+                    {heroError && <p className="form-error">{heroError}</p>}
+                    <button type="submit" className="btn-gold" disabled={heroLoading}>
+                      {heroLoading
+                        ? 'Sending…'
+                        : <span>Send My Interest &nbsp;<i className="fa-solid fa-arrow-right"></i></span>
+                      }
+                    </button>
+                    <p className="form-note"><i className="fa-solid fa-lock"></i> 100% confidential. No spam, ever.</p>
+                  </form>
               </div>
             </div>
           </div>
@@ -297,7 +416,7 @@ function App() {
         </div>
       </section>
 
-      {/* INVEST / GHL FORM */}
+      {/* INVEST FORM */}
       <section className="form-section" id="invest">
         <div className="container">
           <div className="form-wrapper">
@@ -315,26 +434,72 @@ function App() {
             <div className="ghl-form-box">
               <h3>Get Your <span className="gold-text">Investment Package</span></h3>
               <p className="form-tagline">Fill in your details — takes less than 60 seconds</p>
-              <input type="text" className="fake-input" placeholder="First Name" />
-              <input type="text" className="fake-input" placeholder="Last Name" />
-              <input type="email" className="fake-input" placeholder="Email Address" />
-              <input type="tel" className="fake-input" placeholder="Phone / WhatsApp Number" />
-              <select className="fake-input" defaultValue="">
-                <option value="" disabled>Select Your Fund Source</option>
-                <option>RSP / RRSP (Canada)</option>
-                <option>401K (USA)</option>
-                <option>Super Nation (Australia)</option>
-                <option>Super Kiwi (New Zealand)</option>
-                <option>SIP / Self Income Plan (UK)</option>
-                <option>TFSA (Canada)</option>
-                <option>LIDA / Pension Plan</option>
-                <option>Severance Package</option>
-                <option>Cash / Personal Savings</option>
-              </select>
-              <input type="text" className="fake-input" placeholder="Investment Amount (USD)" />
-              <textarea className="fake-input" rows={3} placeholder="Any questions or additional notes" style={{ resize: 'vertical' }}></textarea>
-              <button className="btn-gold">Request Investment Package &nbsp;<i className="fa-solid fa-arrow-right"></i></button>
-              <p className="form-note"><i className="fa-solid fa-lock"></i> Your information is 100% secure. We never share or sell your details.</p>
+
+              <form onSubmit={handleInvestSubmit}>
+                  <input
+                    type="text"
+                    className="fake-input"
+                    placeholder="First Name"
+                    value={invest.firstName}
+                    onChange={e => setInvest(p => ({ ...p, firstName: e.target.value }))}
+                    required
+                  />
+                  <input
+                    type="text"
+                    className="fake-input"
+                    placeholder="Last Name"
+                    value={invest.lastName}
+                    onChange={e => setInvest(p => ({ ...p, lastName: e.target.value }))}
+                    required
+                  />
+                  <input
+                    type="email"
+                    className="fake-input"
+                    placeholder="Email Address"
+                    value={invest.email}
+                    onChange={e => setInvest(p => ({ ...p, email: e.target.value }))}
+                    required
+                  />
+                  <input
+                    type="tel"
+                    className="fake-input"
+                    placeholder="Phone / WhatsApp Number"
+                    value={invest.phone}
+                    onChange={e => setInvest(p => ({ ...p, phone: e.target.value }))}
+                    required
+                  />
+                  <select
+                    className="fake-input"
+                    title="Fund Source"
+                    value={invest.fundSource}
+                    onChange={e => setInvest(p => ({ ...p, fundSource: e.target.value }))}
+                  >
+                    <option value="" disabled>Select Your Fund Source</option>
+                    {FUND_OPTIONS.map(o => <option key={o}>{o}</option>)}
+                  </select>
+                  <input
+                    type="text"
+                    className="fake-input"
+                    placeholder="Investment Amount (USD)"
+                    value={invest.amount}
+                    onChange={e => setInvest(p => ({ ...p, amount: e.target.value }))}
+                  />
+                  <textarea
+                    className="fake-input textarea-notes"
+                    rows={3}
+                    placeholder="Any questions or additional notes"
+                    value={invest.notes}
+                    onChange={e => setInvest(p => ({ ...p, notes: e.target.value }))}
+                  />
+                  {investError && <p className="form-error">{investError}</p>}
+                  <button type="submit" className="btn-gold" disabled={investLoading}>
+                    {investLoading
+                      ? 'Sending…'
+                      : <span>Request Investment Package &nbsp;<i className="fa-solid fa-arrow-right"></i></span>
+                    }
+                  </button>
+                  <p className="form-note"><i className="fa-solid fa-lock"></i> Your information is 100% secure. We never share or sell your details.</p>
+                </form>
             </div>
           </div>
         </div>
