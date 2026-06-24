@@ -330,7 +330,7 @@ function App() {
               <p>New Zealand KiwiSaver and Super fund investors can access international share investment opportunities through approved vehicles.</p>
             </div>
             <div className="fund-card">
-              <div className="fund-icon"><i className="fa-brands fa-british-pound-sign"></i></div>
+              <div className="fund-icon"><i className="fa-solid fa-sterling-sign"></i></div>
               <p className="fund-num">United Kingdom</p>
               <h3>SIP / Self Income Plan</h3>
               <p>UK investors can use SIPP and Self Income Plan (SIP) structures to invest in Ricoh International's share offering.</p>
